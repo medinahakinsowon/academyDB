@@ -3,7 +3,7 @@ import "dotenv/config";
 // const mongoose = require("mongoose");
 import mongoose from "mongoose";
 // const bcrypt = require("bcryptjs");
-import bcrypt from "bcrypt";
+import bcryptjs from "bcryptjs";
 // const User = require("../models/User.model");
 import userSchema from "../models/User.model.js";
 // const Course = require("../models/Course.model");
@@ -154,13 +154,24 @@ async function seed() {
     console.log("👤  Student created: student@spiceacademy.com / Student@1234");
 
     // Create courses
-    const courses = await courseSchema.insertMany(
-      SEED_COURSES.map((c) => ({
+    // const courses = await courseSchema.insertMany(
+    //   SEED_COURSES.map((c) => ({
+    //     ...c,
+    //     instructor: instructor._id,
+    //     instructorName: instructor.name,
+    //   })),
+    // );
+    // console.log(`📚  ${courses.length} courses seeded`);
+    // Use create() in a loop so the pre-save slug hook runs for each course
+    const courses = [];
+    for (const c of SEED_COURSES) {
+      const course = await courseSchema.create({
         ...c,
         instructor: instructor._id,
         instructorName: instructor.name,
-      })),
-    );
+      });
+      courses.push(course);
+    }
     console.log(`📚  ${courses.length} courses seeded`);
 
     console.log("\n🌿  Seed complete! SpiceAcademy database is ready.\n");
