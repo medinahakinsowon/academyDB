@@ -2,6 +2,7 @@ import express from "express";
 import {
   uploadVideo,
   getCourseVideosAdmin,
+  getCourseVideosStudent,
   getVideo,
   updateVideo,
   deleteVideo,
@@ -19,12 +20,18 @@ router.post(
   multerVideoAndThumb,
   uploadVideo,
 );
+
+// Admin/instructor: all videos for a course
 router.get(
-  "/course/:courseId",
+  "/course/:courseId/admin",
   protect,
   restrictTo("instructor", "admin"),
   getCourseVideosAdmin,
 );
+
+// Students: videos for a course they are enrolled in
+router.get("/course/:courseId", protect, getCourseVideosStudent);
+
 router.get("/:id", protect, getVideo);
 router.patch("/:id", protect, restrictTo("instructor", "admin"), updateVideo);
 router.delete("/:id", protect, restrictTo("instructor", "admin"), deleteVideo);

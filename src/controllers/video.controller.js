@@ -74,6 +74,33 @@ export const getCourseVideosAdmin = asyncHandler(async (req, res) => {
   res.json({ success: true, data: { videos } });
 });
 
+// ─── Student: fetch videos for a course they are enrolled in ─────────────────
+export const getCourseVideosStudent = asyncHandler(async (req, res) => {
+  const { courseId } = req.params;
+
+  // Verify the student is actually enrolled
+  const enrollment = await Enrollment.findOne({
+    student: req.user._id,
+    course: courseId,
+    status: { $in: ["active", "completed"] },
+  });
+
+  if (!enrollment) {
+    return res.status(403).json({
+      success: false,
+      message: "You are not enrolled in this course.",
+    });
+  }
+
+  const videos = await Video.find({ course: courseId, isPublished: true })
+    .sort({ order: 1 })
+    .select(
+      "title description filePath thumbnail duration order isFree isPublished",
+    );
+
+  res.json({ success: true, data: { videos } });
+});
+
 export const getVideo = asyncHandler(async (req, res) => {
   const video = await Video.findById(req.params.id).populate("course", "title");
   if (!video)

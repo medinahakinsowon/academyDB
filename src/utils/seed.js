@@ -1,13 +1,8 @@
 import "dotenv/config";
-
-// const mongoose = require("mongoose");
 import mongoose from "mongoose";
-// const bcrypt = require("bcryptjs");
-import bcryptjs from "bcryptjs";
-// const User = require("../models/User.model");
 import userSchema from "../models/User.model.js";
-// const Course = require("../models/Course.model");
 import courseSchema from "../models/Course.model.js";
+import Video from "../models/Video.model.js"
 
 const SEED_COURSES = [
   {
@@ -108,6 +103,30 @@ const SEED_COURSES = [
   },
 ];
 
+const VIDEO_TEMPLATES = [
+  {
+    title: 'Introduction & Overview',
+    description: 'Welcome lesson — an overview of what you will learn in this course.',
+    videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    thumbnail: 'https://images.unsplash.com/photo-1506368249639-73a05d6f6488?w=400&q=80',
+    duration: 60, order: 1, isFree: true,
+  },
+  {
+    title: 'Core Concepts Deep Dive',
+    description: 'We explore the foundational concepts in detail with practical examples.',
+    videoUrl: 'https://www.w3schools.com/html/movie.mp4',
+    thumbnail: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&q=80',
+    duration: 120, order: 2, isFree: false,
+  },
+  {
+    title: 'Practical Application & Summary',
+    description: 'Hands-on application of what we have learned, plus a course summary.',
+    videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    thumbnail: 'https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=400&q=80',
+    duration: 90, order: 3, isFree: false,
+  },
+];
+
 async function seed() {
   try {
     await mongoose.connect(
@@ -153,16 +172,6 @@ async function seed() {
     });
     console.log("👤  Student created: student@spiceacademy.com / Student@1234");
 
-    // Create courses
-    // const courses = await courseSchema.insertMany(
-    //   SEED_COURSES.map((c) => ({
-    //     ...c,
-    //     instructor: instructor._id,
-    //     instructorName: instructor.name,
-    //   })),
-    // );
-    // console.log(`📚  ${courses.length} courses seeded`);
-    // Use create() in a loop so the pre-save slug hook runs for each course
     const courses = [];
     for (const c of SEED_COURSES) {
       const course = await courseSchema.create({
@@ -175,6 +184,34 @@ async function seed() {
     console.log(`📚  ${courses.length} courses seeded`);
 
     console.log("\n🌿  Seed complete! SpiceAcademy database is ready.\n");
+    // ─── Seed 3 videos per course ─────────────────────────────────────────
+    let videoCount = 0;
+    for (const course of courses) {
+      for (const v of VIDEO_TEMPLATES) {
+        await Video.create({
+          title: `${v.title} — ${course.title}`,
+          description: v.description,
+          course: course._id,
+          uploadedBy: instructor._id,
+          filename: `seed-video-${course._id}-${v.order}.mp4`,
+          originalName: `${v.title}.mp4`,
+          filePath: v.videoUrl,
+          fileSize: 0,
+          mimeType: "video/mp4",
+          duration: v.duration,
+          thumbnail: v.thumbnail,
+          order: v.order,
+          isFree: v.isFree,
+          isPublished: true,
+        });
+        videoCount++;
+      }
+    }
+    console.log(
+      `🎬  ${videoCount} videos seeded (${VIDEO_TEMPLATES.length} per course)`,
+    );
+
+    console.log("\n🌿  Seed complete! SpiceAcademy database is ready.\n");
     process.exit(0);
   } catch (err) {
     console.error("❌  Seed error:", err);
@@ -183,3 +220,10 @@ async function seed() {
 }
 
 seed();
+
+
+
+
+
+
+

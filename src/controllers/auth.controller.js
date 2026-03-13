@@ -41,7 +41,8 @@ export const login = asyncHandler(async (req, res) => {
     return res
       .status(400)
       .json({ success: false, message: "Email and password are required." });
-  const user = await User.findOne({ email }).select("+password");
+
+  const user = await User.findOne({ email }).select("password");
   if (!user || !(await user.comparePassword(password))) {
     return res
       .status(401)
@@ -54,8 +55,10 @@ export const login = asyncHandler(async (req, res) => {
         success: false,
         message: "Account is deactivated. Contact support.",
       });
-  user.lastLogin = new Date();
-  await user.save({ validateBeforeSave: false });
+
+  // ✅ Use updateOne instead of user.save() to avoid triggering pre-save hook
+  await User.updateOne({ _id: user._id }, { lastLogin: new Date() });
+
   sendToken(user, 200, res, "Login successful!");
 });
 
