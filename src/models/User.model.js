@@ -62,10 +62,21 @@ userSchema.virtual("enrolledCoursesCount", {
   count: true,
 });
 
-userSchema.pre("save", async function () {
-  if (!this.isModified("password")) return;
-  this.password = await bcrypt.hash(this.password, 12);
+// userSchema.pre("save", async function () {
+//   if (!this.isModified("password")) return;
+//   this.password = await bcrypt.hash(this.password, 12);
 
+// });
+// Replace the pre-save hook in User.model.js with this
+
+userSchema.pre("save", async function () {
+  // Skip if password not modified
+  if (!this.isModified("password")) return;
+  
+  // Skip if already hashed (bcrypt hashes start with $2a$ or $2b$)
+  if (this.password.startsWith("$2a$") || this.password.startsWith("$2b$")) return;
+
+  this.password = await bcrypt.hash(this.password, 12);
 });
 
 userSchema.methods.comparePassword = async function (candidate) {

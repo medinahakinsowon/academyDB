@@ -74,11 +74,15 @@ export const toggleUserActive = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user)
     return res.status(404).json({ success: false, message: "User not found." });
-  user.isActive = !user.isActive;
-  await user.save({ validateBeforeSave: false });
+
+  const newStatus = !user.isActive;
+
+  // Use updateOne to avoid triggering the pre-save password hash hook
+  await User.updateOne({ _id: user._id }, { isActive: newStatus });
+
   res.json({
     success: true,
-    message: `User ${user.isActive ? "activated" : "deactivated"}.`,
-    data: { isActive: user.isActive },
+    message: `User ${newStatus ? "activated" : "deactivated"}.`,
+    data: { isActive: newStatus },
   });
 });

@@ -42,7 +42,7 @@ export const login = asyncHandler(async (req, res) => {
       .status(400)
       .json({ success: false, message: "Email and password are required." });
 
-  const user = await User.findOne({ email }).select("password");
+  const user = await User.findOne({ email }).select("+password");
   if (!user || !(await user.comparePassword(password))) {
     return res
       .status(401)

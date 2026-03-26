@@ -1,49 +1,43 @@
-import https from "https";
-import { v4 as uuidv4 } from "uuid";
+import crypto from "crypto";
 import Payment from "../models/Payment.model.js";
 import Enrollment from "../models/Enrollment.model.js";
 import Course from "../models/Course.model.js";
 import { asyncHandler } from "../middleware/error.middleware.js";
 
-const paystackRequest = (method, path, data) =>
-  new Promise((resolve, reject) => {
-    const options = {
-      hostname: "api.paystack.co",
-      port: 443,
-      path,
-      method,
-      headers: {
-        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-        "Content-Type": "application/json",
-      },
-    };
-    const req = https.request(options, (res) => {
-      let body = "";
-      res.on("data", (chunk) => (body += chunk));
-      res.on("end", () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-    req.on("error", reject);
-    if (data) req.write(JSON.stringify(data));
-    req.end();
-  });
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
+const PAYSTACK_BASE = "https://api.paystack.co";
 
+// ─── Helper: call Paystack API ────────────────────────────────────────────────
+// Replace paystackRequest in payment.controller.js with this:
+
+const paystackRequest = async (method, path, body = null) => {
+  const response = await fetch(`${PAYSTACK_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${PAYSTACK_SECRET}`,
+      "Content-Type": "application/json",
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  return response.json();
+};
+
+// ─── Step 1: Initialize transaction ──────────────────────────────────────────
 export const initiatePayment = asyncHandler(async (req, res) => {
+  //  console.log("USER EMAIL:", req.user.email);
+  //  console.log("AMOUNT:", Math.round(course.price * 100));
+  //  console.log("PAYSTACK SECRET exists:", !!PAYSTACK_SECRET);
   const { courseId } = req.body;
+  if (!courseId)
+    return res
+      .status(400)
+      .json({ success: false, message: "courseId is required." });
+
   const course = await Course.findById(courseId);
   if (!course)
     return res
       .status(404)
       .json({ success: false, message: "Course not found." });
-  if (!course.isPublished)
-    return res
-      .status(400)
-      .json({ success: false, message: "Course is not available." });
 
   const existing = await Enrollment.findOne({
     student: req.user._id,
@@ -52,149 +46,173 @@ export const initiatePayment = asyncHandler(async (req, res) => {
   if (existing)
     return res
       .status(409)
+      .json({ success: false, message: "Already enrolled in this course." });
+
+  // Amount in kobo (NGN)
+  const amountKobo = Math.round(course.price * 100);
+  const reference = `SA-${req.user._id}-${courseId}-${Date.now()}`;
+
+  const paystackRes = await paystackRequest("POST", "/transaction/initialize", {
+    email: req.user.email,
+    amount: amountKobo,
+    reference,
+    currency: "NGN",
+    metadata: {
+      courseId: courseId,
+      courseTitle: course.title,
+      userId: req.user._id.toString(),
+      userName: req.user.name,
+    },
+    callback_url: `${process.env.CLIENT_URL || "http://localhost:5173"}/payment/verify`,
+  });
+
+  if (!paystackRes.status)
+    return res
+      .status(502)
       .json({
         success: false,
-        message: "You are already enrolled in this course.",
+        message: "Paystack initialization failed.",
+        error: paystackRes.message,
       });
 
-  if (course.price === 0) {
-    const enrollment = await Enrollment.create({
-      student: req.user._id,
-      course: courseId,
-    });
-    await Course.findByIdAndUpdate(courseId, { $inc: { enrolledCount: 1 } });
-    return res
-      .status(201)
-      .json({
-        success: true,
-        message: "Enrolled in free course successfully!",
-        data: { enrollment, free: true },
-      });
-  }
-
-  const reference = `SPICE-${uuidv4().split("-")[0].toUpperCase()}-${Date.now()}`;
-  const amountKobo = Math.round(course.price * 100);
-
-  const payment = await Payment.create({
-    student: req.user._id,
+  // Save pending payment — using your model's field names
+  await Payment.create({
+    student: req.user?._id,
     course: courseId,
+    amount: amountKobo, // store in kobo to match Paystack
+    amountDisplay: course.price, // human-readable price
+    currency: "NGN",
     reference,
-    amount: amountKobo,
-    amountDisplay: course.price,
-    currency: course.currency || "USD",
     status: "pending",
-    metadata: { courseName: course.title, studentName: req.user.name },
+    metadata: { courseTitle: course.title, userName: req.user.name },
   });
 
-  let paystackData = null;
-  try {
-    paystackData = await paystackRequest("POST", "/transaction/initialize", {
-      email: req.user.email,
-      amount: amountKobo,
-      reference,
-      currency: course.currency === "NGN" ? "NGN" : "USD",
-      metadata: {
-        courseId: courseId.toString(),
-        studentId: req.user._id.toString(),
-        paymentId: payment._id.toString(),
-      },
-      callback_url: `${process.env.CLIENT_URL}/payment/callback`,
-    });
-  } catch (err) {
-    console.warn("Paystack unavailable:", err.message);
-  }
-
-  res.status(201).json({
-    success: true,
-    message: "Payment initiated.",
-    data: {
-      reference,
-      paymentId: payment._id,
-      amount: course.price,
-      currency: course.currency || "USD",
-      paystackUrl: paystackData?.data?.authorization_url || null,
-      accessCode: paystackData?.data?.access_code || null,
-    },
-  });
-});
-
-export const verifyPayment = asyncHandler(async (req, res) => {
-  const { reference } = req.params;
-  const payment = await Payment.findOne({ reference, student: req.user._id });
-  if (!payment)
-    return res
-      .status(404)
-      .json({ success: false, message: "Payment record not found." });
-
-  if (payment.status === "success") {
-    const enrollment = await Enrollment.findOne({
-      student: req.user._id,
-      course: payment.course,
-    });
-    return res.json({
-      success: true,
-      message: "Already verified.",
-      data: { payment, enrollment },
-    });
-  }
-
-  let verified = false;
-  try {
-    const result = await paystackRequest(
-      "GET",
-      `/transaction/verify/${reference}`,
-    );
-    if (result.data?.status === "success") {
-      verified = true;
-      payment.status = "success";
-      payment.paystackId = result.data.id?.toString();
-      payment.channel = result.data.channel;
-      payment.paidAt = new Date(result.data.paid_at);
-      await payment.save();
-    }
-  } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      verified = true;
-      payment.status = "success";
-      payment.paidAt = new Date();
-      await payment.save();
-    }
-  }
-
-  if (!verified) {
-    payment.status = "failed";
-    await payment.save();
-    return res
-      .status(402)
-      .json({ success: false, message: "Payment not verified with Paystack." });
-  }
-
-  const enrollment = await Enrollment.create({
-    student: req.user._id,
-    course: payment.course,
-    payment: payment._id,
-  });
-  await Course.findByIdAndUpdate(payment.course, {
-    $inc: { enrolledCount: 1 },
-  });
   res.json({
     success: true,
-    message: "Payment verified! You are now enrolled. 🎉",
-    data: { payment, enrollment },
+    authorizationUrl: paystackRes.data.authorization_url,
+    accessCode: paystackRes.data.access_code,
+    reference,
   });
 });
 
-export const mockPayment = asyncHandler(async (req, res) => {
-  if (process.env.NODE_ENV === "production")
+// ─── Step 2: Verify transaction ───────────────────────────────────────────────
+export const verifyPayment = asyncHandler(async (req, res) => {
+  const { reference } = req.params;
+
+  const paystackRes = await paystackRequest(
+    "GET",
+    `/transaction/verify/${reference}`,
+  );
+
+  if (!paystackRes.status || paystackRes.data.status !== "success") {
+    await Payment.findOneAndUpdate({ reference }, { status: "failed" });
     return res
-      .status(403)
-      .json({ success: false, message: "Not available in production." });
+      .status(402)
+      .json({ success: false, message: "Payment not successful." });
+  }
+
+  const { metadata, channel, id: paystackId } = paystackRes.data;
+  const { courseId, userId } = metadata;
+
+  // Idempotency guard
+  const existingEnrollment = await Enrollment.findOne({
+    student: userId,
+    course: courseId,
+  });
+  if (existingEnrollment)
+    return res.json({
+      success: true,
+      message: "Already enrolled.",
+      data: { enrollment: existingEnrollment },
+    });
+
+  // Update payment record using your model's field names
+  const payment = await Payment.findOneAndUpdate(
+    { reference },
+    {
+      status: "success",
+      paidAt: new Date(),
+      paystackId: String(paystackId),
+      channel: channel || null,
+      metadata: { ...metadata, paystackData: paystackRes.data },
+    },
+    { new: true },
+  );
+
+  // Create enrollment
+  const enrollment = await Enrollment.create({
+    student: userId,
+    course: courseId,
+    payment: payment._id,
+    status: "active",
+  });
+
+  res.json({
+    success: true,
+    message: "Payment verified and enrollment created!",
+    data: { enrollment, payment },
+  });
+});
+
+// ─── Paystack webhook ─────────────────────────────────────────────────────────
+export const paystackWebhook = asyncHandler(async (req, res) => {
+  const hash = crypto
+    .createHmac("sha512", PAYSTACK_SECRET)
+    .update(JSON.stringify(req.body))
+    .digest("hex");
+
+  if (hash !== req.headers["x-paystack-signature"])
+    return res.status(401).json({ message: "Invalid signature." });
+
+  const { event, data } = req.body;
+
+  if (event === "charge.success") {
+    const { reference, metadata, channel, id: paystackId } = data;
+    const { courseId, userId } = metadata || {};
+    if (!courseId || !userId) return res.sendStatus(200);
+
+    await Payment.findOneAndUpdate(
+      { reference },
+      {
+        status: "success",
+        paidAt: new Date(),
+        paystackId: String(paystackId),
+        channel,
+      },
+    );
+
+    const exists = await Enrollment.findOne({
+      student: userId,
+      course: courseId,
+    });
+    if (!exists) {
+      const payment = await Payment.findOne({ reference });
+      await Enrollment.create({
+        student: userId,
+        course: courseId,
+        payment: payment?._id,
+        status: "active",
+      });
+    }
+  }
+
+  res.sendStatus(200);
+});
+
+// ─── Mock payment (dev only) ──────────────────────────────────────────────────
+export const mockPayment = asyncHandler(async (req, res) => {
   const { courseId } = req.body;
+  if (!courseId)
+    return res
+      .status(400)
+      .json({ success: false, message: "courseId is required." });
+
   const course = await Course.findById(courseId);
   if (!course)
     return res
       .status(404)
       .json({ success: false, message: "Course not found." });
+
   const existing = await Enrollment.findOne({
     student: req.user._id,
     course: courseId,
@@ -204,36 +222,51 @@ export const mockPayment = asyncHandler(async (req, res) => {
       .status(409)
       .json({ success: false, message: "Already enrolled." });
 
-  const reference = `MOCK-${uuidv4().split("-")[0].toUpperCase()}`;
+  const reference = `MOCK-${req.user._id}-${Date.now()}`;
+
   const payment = await Payment.create({
     student: req.user._id,
     course: courseId,
-    reference,
     amount: course.price * 100,
     amountDisplay: course.price,
-    currency: course.currency || "USD",
+    currency: "NGN",
+    reference,
     status: "success",
-    channel: "mock",
     paidAt: new Date(),
+    metadata: { courseTitle: course.title },
   });
+
   const enrollment = await Enrollment.create({
     student: req.user._id,
     course: courseId,
     payment: payment._id,
+    status: "active",
   });
-  await Course.findByIdAndUpdate(courseId, { $inc: { enrolledCount: 1 } });
-  res
-    .status(201)
-    .json({
-      success: true,
-      message: "Mock payment successful! Enrolled. 🌿",
-      data: { payment, enrollment },
-    });
+
+  res.status(201).json({
+    success: true,
+    message: "Mock payment successful!",
+    data: { enrollment, payment },
+  });
 });
 
+// ─── My payments ──────────────────────────────────────────────────────────────
 export const getMyPayments = asyncHandler(async (req, res) => {
   const payments = await Payment.find({ student: req.user._id })
-    .populate("course", "title thumbnail price")
+    .populate("course", "title thumbnail")
     .sort({ createdAt: -1 });
   res.json({ success: true, data: { payments } });
+});
+
+// ─── Admin: all payments ──────────────────────────────────────────────────────
+export const getAllPayments = asyncHandler(async (req, res) => {
+  const { limit = 100, page = 1 } = req.query;
+  const payments = await Payment.find()
+    .populate("student", "name email")
+    .populate("course", "title")
+    .sort({ createdAt: -1 })
+    .limit(Number(limit))
+    .skip((Number(page) - 1) * Number(limit));
+  const total = await Payment.countDocuments();
+  res.json({ success: true, data: { payments, total } });
 });
