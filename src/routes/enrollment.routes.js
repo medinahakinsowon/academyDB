@@ -15,4 +15,8 @@ router.get(
 );
 router.get("/", protect, restrictTo("admin"), enrollmentCtrl.getAllEnrollments);
 
+
+
+
+
 export default router;

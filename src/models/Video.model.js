@@ -76,4 +76,7 @@ const videoSchema = new mongoose.Schema(
 videoSchema.index({ course: 1, order: 1 });
 videoSchema.index({ uploadedBy: 1 });
 
+
+
+
 export default mongoose.model("Video", videoSchema);

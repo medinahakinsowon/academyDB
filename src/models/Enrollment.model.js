@@ -83,4 +83,10 @@ enrollmentSchema.methods.recalculateProgress = async function (totalLessons) {
   await this.save();
 };
 
+
+
+
+
+
+
 export default mongoose.model("Enrollment", enrollmentSchema);

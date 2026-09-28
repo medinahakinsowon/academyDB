@@ -19,6 +19,8 @@ import { errorHandler } from "./src/middleware/error.middleware.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+//initialising app with express server
+
 const app = express();
 
 // ─── Security & Middleware ──────────────────────────────────────────────────
@@ -64,7 +66,8 @@ app.use("/api", globalLimiter);
 app.use("/api/auth", authLimiter);
 
 // ─── Static Files (Uploads) ─────────────────────────────────────────────────
-app.use("/uploads", express.static(join(__dirname, "../uploads")));
+// app.use("/uploads", express.static(join(__dirname, "../uploads")));
+app.use("/uploads", express.static(join(__dirname, "uploads")));
 
 // ─── Health Check ───────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
@@ -76,7 +79,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// ─── Routes ─────────────────────────────────────────────────────────────────
+// ─── Routes: base urls for each routes ─────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/courses", courseRoutes);
