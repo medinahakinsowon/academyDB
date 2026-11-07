@@ -10,7 +10,7 @@
     "seed": "node src/utils/seed.js"
   },
   "keywords": [],
-  "author": "",
+  "author": "medinat",
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -24,6 +24,7 @@
     "mongoose": "^9.2.3",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
+    "nodemailer": "^10.1.0",
     "paystack": "^2.0.1",
     "uuid": "^9.0.1"
   },
