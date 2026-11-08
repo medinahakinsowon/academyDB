@@ -25,21 +25,24 @@ const app = express();
 
 // ─── Security & Middleware ──────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use(
-  cors({
-    origin: [
-      process.env.CLIENT_URL || "https://sumatspice-academy-sval.vercel.app",
-      "http://localhost:4000",
-      "http://localhost:5173",
-      "http://127.0.0.1:3000",
-      "http://127.0.0.1:5173",
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  }),
-);
-app.options("*", cors());
+const corsOptions = {
+  origin: [
+    process.env.CLIENT_URL || "https://sumatspice-academy-sval.vercel.app",
+    "http://localhost:4000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+// Apply CORS to all normal incoming routes
+app.use(cors(corsOptions));
+
+// 🚀 CRITICAL FOR VERCEL: Explicitly handle preflight OPTIONS requests across all routes
+app.options('*', cors(corsOptions)); 
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
