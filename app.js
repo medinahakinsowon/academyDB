@@ -27,7 +27,7 @@ const app = express();
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 const corsOptions = {
   origin: [
-    process.env.CLIENT_URL || "https://sumatspice-academy-sval.vercel.app",
+    process.env.CLIENT_URL || "https://sumatspice-academy.vercel.app",
     "http://localhost:4000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
